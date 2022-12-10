@@ -28,7 +28,10 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         let cors = actix_cors::Cors::default()
-            .allowed_origin("https://steamloopback.host")
+            //.allowed_origin("https://steamloopback.host")
+            .allow_any_origin()
+            .send_wildcard()
+            .allow_any_method()
             .allow_any_header()
             .expose_any_header();
 
