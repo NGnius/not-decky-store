@@ -3,14 +3,38 @@ mod consts;
 mod not_decky;
 mod storage;
 
-use crate::storage::IStorageWrap;
-
 use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
 use simplelog::{LevelFilter, WriteLogger};
 
 #[get("/version_info")]
 async fn hello() -> impl Responder {
     HttpResponse::Ok().body(format!("{} v{}", consts::PACKAGE_NAME, consts::PACKAGE_VERSION))
+}
+
+fn build_storage_box(storage: &cli::StorageArgs) -> Box<dyn storage::IStorage> {
+    match storage {
+        cli::StorageArgs::Default => Box::new(storage::FileStorage::new(
+            "./store".into(),
+            "http://192.168.0.128:22252".into(),
+            true,
+        )),
+        cli::StorageArgs::Filesystem(fs) => Box::new(storage::FileStorage::new(
+            fs.root.clone().into(),
+            fs.domain_root.clone().into(),
+            fs.enable_stats,
+        )),
+        cli::StorageArgs::Proxy(px) => Box::new(storage::ProxiedStorage::new(
+            px.proxy_store.clone(),
+        )),
+        cli::StorageArgs::Empty => Box::new(storage::EmptyStorage),
+        cli::StorageArgs::Merge(ls) => Box::new(storage::MergedStorage::new(
+            ls.generate_args()
+                .expect("Bad descriptor")
+                .drain(..)
+                .map(|args| build_storage_box(&args))
+                .collect()
+        ))
+    }
 }
 
 #[actix_web::main]
@@ -35,17 +59,12 @@ async fn main() -> std::io::Result<()> {
             .allow_any_header()
             .expose_any_header();
 
-        let storage_data: Box<dyn storage::IStorage> = match &args.storage {
-            cli::StorageArgs::Default => storage::FileStorage::new(
-                "./store".into(),
-                "http://192.168.0.128:22252".into(),
-                true,
-            ).wrap(args.clone()),
-            cli::StorageArgs::Filesystem(fs) => storage::FileStorage::new(
-                fs.root.clone().into(),
-                fs.domain_root.clone().into(),
-                fs.enable_stats,
-            ).wrap(args.clone()),
+        let storage_data: Box<dyn storage::IStorage> = build_storage_box(&args.storage);
+
+        let storage_data = if let Some(cache_duration) = args.cache_duration {
+            Box::new(storage::CachedStorage::new(cache_duration, storage_data))
+        } else {
+            storage_data
         };
 
         App::new()

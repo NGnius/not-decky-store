@@ -47,7 +47,7 @@ impl<T: Clone> Cached<T> {
     }
 }
 
-pub struct CachedStorage<S: IStorage> {
+pub struct CachedStorage<S: AsRef<dyn IStorage> + Send + Sync> {
     fallback: S,
     plugins_cache: Cached<StorePluginList>,
     statistics_cache: Cached<HashMap<String, u64>>,
@@ -55,11 +55,11 @@ pub struct CachedStorage<S: IStorage> {
     images_cache: Cached<HashMap<String, Bytes>>,
 }
 
-impl<S: IStorage> CachedStorage<S> {
+impl<S: AsRef<dyn IStorage> + Send + Sync> CachedStorage<S> {
     pub fn new(duration: i64, inner: S) -> Self {
         Self {
-            plugins_cache: Cached::new(inner.plugins(), duration),
-            statistics_cache: Cached::new(inner.get_statistics(), duration),
+            plugins_cache: Cached::new(inner.as_ref().plugins(), duration),
+            statistics_cache: Cached::new(inner.as_ref().get_statistics(), duration),
             artifacts_cache: Cached::new(HashMap::new(), duration),
             images_cache: Cached::new(HashMap::new(), duration),
             fallback: inner,
@@ -67,9 +67,9 @@ impl<S: IStorage> CachedStorage<S> {
     }
 }
 
-impl<S: IStorage> IStorage for CachedStorage<S> {
+impl<S: AsRef<dyn IStorage> + Send + Sync> IStorage for CachedStorage<S> {
     fn plugins(&self) -> StorePluginList {
-        self.plugins_cache.get(|| self.fallback.plugins())
+        self.plugins_cache.get(|| self.fallback.as_ref().plugins())
     }
 
     fn get_artifact(&self, name: &str, version: &str, hash: &str) -> Result<bytes::Bytes, std::io::Error> {
@@ -77,7 +77,7 @@ impl<S: IStorage> IStorage for CachedStorage<S> {
         if let Some(bytes) = cached.get(hash) {
             Ok(bytes.to_owned())
         } else {
-            let new_artifact = self.fallback.get_artifact(name, version, hash)?;
+            let new_artifact = self.fallback.as_ref().get_artifact(name, version, hash)?;
             cached.insert(hash.to_owned(), new_artifact.clone());
             self.artifacts_cache.refresh(cached);
             Ok(new_artifact)
@@ -89,7 +89,7 @@ impl<S: IStorage> IStorage for CachedStorage<S> {
         if let Some(bytes) = cached.get(name) {
             Ok(bytes.to_owned())
         } else {
-            let new_image = self.fallback.get_image(name)?;
+            let new_image = self.fallback.as_ref().get_image(name)?;
             cached.insert(name.to_owned(), new_image.clone());
             self.images_cache.refresh(cached);
             Ok(new_image)
@@ -97,6 +97,6 @@ impl<S: IStorage> IStorage for CachedStorage<S> {
     }
 
     fn get_statistics(&self) -> std::collections::HashMap<String, u64> {
-        self.statistics_cache.get(|| self.fallback.get_statistics())
+        self.statistics_cache.get(|| self.fallback.as_ref().get_statistics())
     }
 }

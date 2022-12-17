@@ -2,17 +2,15 @@ use decky_api::{StorePluginList, StorePluginVersion};
 
 use super::IStorage;
 
-pub struct ProxiedStorage<S: IStorage> {
+pub struct ProxiedStorage {
     store_url: String,
-    fallback: S,
     agent: ureq::Agent,
 }
 
-impl<S: IStorage> ProxiedStorage<S> {
-    pub fn new(target_store: String, inner: S) -> Self {
+impl ProxiedStorage {
+    pub fn new(target_store: String) -> Self {
         Self {
             store_url: target_store,
-            fallback: inner,
             agent: ureq::Agent::new(),
         }
     }
@@ -45,7 +43,7 @@ impl<S: IStorage> ProxiedStorage<S> {
     }
 }
 
-impl<S: IStorage> IStorage for ProxiedStorage<S> {
+impl IStorage for ProxiedStorage {
     fn plugins(&self) -> StorePluginList {
         let mut proxy = self.proxy_plugins();
         for plugin in &mut proxy {
@@ -55,12 +53,10 @@ impl<S: IStorage> IStorage for ProxiedStorage<S> {
                 }
             }
         }
-        let fallback = self.fallback.plugins();
-        proxy.extend_from_slice(&fallback);
         proxy
     }
 
-    fn get_artifact(&self, name: &str, version: &str, hash: &str) -> Result<bytes::Bytes, std::io::Error> {
+    /*fn get_artifact(&self, name: &str, version: &str, hash: &str) -> Result<bytes::Bytes, std::io::Error> {
         self.fallback.get_artifact(name, version, hash)
     }
 
@@ -70,5 +66,5 @@ impl<S: IStorage> IStorage for ProxiedStorage<S> {
 
     fn get_statistics(&self) -> std::collections::HashMap<String, u64> {
         self.fallback.get_statistics()
-    }
+    }*/
 }
