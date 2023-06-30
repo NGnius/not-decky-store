@@ -9,6 +9,9 @@ pub struct CliArgs {
     /// Cache results for a period
     #[arg(name = "cache", long)]
     pub cache_duration: Option<i64>,
+    /// Local server port (default: 222252)
+    #[arg(name = "port", short, long)]
+    pub server_port: Option<u16>,
     /// Storage adapter
    #[command(subcommand)]
    pub storage: StorageArgs,
@@ -39,14 +42,16 @@ impl StorageArgs {
     pub fn from_descriptor(chars: &mut std::str::Chars) -> Result<Self, String> {
         //let mut chars = descriptor.chars();
         if let Some(char0) = chars.next() {
-            Ok(match char0 {
+            let desc = match char0 {
                 'd' | '_' => Self::Default,
                 'f' => Self::Filesystem(FilesystemArgs::from_descriptor(chars)?),
                 'p' => Self::Proxy(ProxyArgs::from_descriptor(chars)?),
                 'e' | ' ' => Self::Empty,
                 'm' | '+' => Self::Merge(MergeArgs::from_descriptor(chars)?),
                 c => return Err(format!("Unexpected char {}, expected a descriptor prefix from {{d f p e m}}", c)),
-            })
+            };
+            log::info!("Parsed descriptor as {}", desc.clone().to_descriptor());
+            Ok(desc)
         } else {
             Err(format!("Empty storage descriptor"))
         }
@@ -89,14 +94,16 @@ impl FilesystemArgs {
         let mut for_variable: Option<String> = None;
         let mut in_string = false;
         for c in chars {
+            //println!("Handling char: '{}' (in_string? {}, root: {:?}, domain: {:?}, stats: {:?}, buf: {:?}, for_variable: {:?})", c, in_string, root, domain, stats, buffer, for_variable);
             match c {
-                '}' => return
-                Ok(Self {
-                    root: root.unwrap_or_else(|| "./store".into()),
-                    domain_root: domain.unwrap_or_else(|| "http://localhost:22252".into()),
-                    enable_stats: stats,
-                }),
-                '\'' => in_string = !in_string,
+                '}' => if !in_string {return
+                    Ok(Self {
+                        root: root.unwrap_or_else(|| "./store".into()),
+                        domain_root: domain.unwrap_or_else(|| "http://localhost:22252".into()),
+                        enable_stats: stats,
+                    })
+                } else { buffer.push('}') },
+                '\"' => in_string = !in_string,
                 '=' => if !in_string {
                     let value: String = buffer.drain(..).collect();
                     if for_variable.is_some() {
@@ -104,9 +111,9 @@ impl FilesystemArgs {
                     } else {
                         for_variable = Some(value);
                     }
-                },
-                ',' => if !in_string {
-                    let value: String = buffer.iter().collect();
+                } else { buffer.push('=') },
+                ',' => if !in_string && !buffer.is_empty() {
+                    let value: String = buffer.drain(..).collect();
                     if let Some(var) = for_variable.take() {
                         let var_trimmed = var.trim();
                         match &var_trimmed as &str {
@@ -118,7 +125,7 @@ impl FilesystemArgs {
                     } else {
                         return Err("Unexpected , in filesystem descriptor".to_owned())
                     }
-                }
+                } else { buffer.push(',') }
                 c => buffer.push(c),
             }
         }
@@ -126,7 +133,7 @@ impl FilesystemArgs {
     }
 
     fn to_descriptor(self) -> String {
-        format!("{{root='{}',domain='{}',stats:{}}}", self.root, self.domain_root, self.enable_stats as u8)
+        format!("{{root=\"{}\",domain=\"{}\",stats={},}}", self.root, self.domain_root, self.enable_stats as u8)
     }
 }
 
@@ -147,13 +154,25 @@ impl ProxyArgs {
             return Err(format!("Proxy descriptor too short"));
         }
         let mut buffer = Vec::new();
+        let mut escaped = false;
         for c in chars {
             match c {
-                '}' => return
-                    Ok(Self {
-                        proxy_store: if buffer.is_empty() { "https://plugins.deckbrew.xyz".into() } else { buffer.iter().collect() }
-                    }),
-                c => buffer.push(c),
+                '}' => if escaped {
+                    buffer.push('}')
+                } else {
+                    return
+                        Ok(Self {
+                            proxy_store: if buffer.is_empty() { "https://plugins.deckbrew.xyz".into() } else { buffer.iter().collect() }
+                        })
+                }
+                '\\' => escaped = true,
+                c => {
+                    if escaped {
+                        escaped = false;
+                        buffer.push('\\');
+                    }
+                    buffer.push(c)
+                },
             }
         }
         Err("Unexpected end of descriptor".to_owned())
@@ -237,7 +256,7 @@ mod tests {
 
     #[test]
     fn storage_descriptor() {
-        let descriptor = "f{root='',domain='',stats:0}";
+        let descriptor = "f{root=\"\",domain=\"\",stats=0}";
         let parsed = StorageArgs::from_descriptor(&mut descriptor.chars());
         parsed.expect("StorageArgs parse error");
         let descriptor = "p{}";

@@ -12,6 +12,7 @@ async fn hello() -> impl Responder {
 }
 
 fn build_storage_box(storage: &cli::StorageArgs) -> Box<dyn storage::IStorage> {
+    log::debug!("storage args {:?}", storage);
     match storage {
         cli::StorageArgs::Default => Box::new(storage::FileStorage::new(
             "./store".into(),
@@ -77,7 +78,7 @@ async fn main() -> std::io::Result<()> {
             .service(not_decky::decky_image)
             .service(not_decky::decky_statistics)
     })
-    .bind(("0.0.0.0", 22252))?
+    .bind(("0.0.0.0", args.server_port.unwrap_or(22252)))?
     .run()
     .await
 }

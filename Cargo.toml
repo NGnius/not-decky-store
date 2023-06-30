@@ -17,11 +17,12 @@ log = "0.4"
 simplelog = "0.12"
 
 # web framework
-actix-web = "4.2"
+actix-web = { version = "4.2", default-features = false, features = [ "macros", "compress-brotli", "compress-zstd" ] }
 actix-cors = "0.6"
 
 # proxy storage impl
-ureq = { version = "2.5", features = ["json"] }
+ureq = { version = "2.7", default-features = false, features = ["json", "native-tls", "brotli", "gzip"] }
+native-tls = "0.2" # ring only compiles on x86 and arm for some dumb reason, so use this instead
 
 # cache storage impl
 chrono = { version = "0.4" }

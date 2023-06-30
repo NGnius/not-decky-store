@@ -124,6 +124,7 @@ impl FileStorage {
                 }
             }
         }
+        versions.sort_by(|a, b| b.name.cmp(&a.name)); // sort e.g. v2 before v1
         let image_url = format!("{}/plugins/{}.png", self.domain_root, plugin_name);
         Ok(
             plugin_info.complete(
@@ -174,7 +175,7 @@ impl IStorage for FileStorage {
         if let Some(stats) = &self.stats {
             if let Ok(plugins) = self.read_all_plugins() {
                 let lock = stats.read().expect("Failed to acquire stats read lock");
-                let mut map = std::collections::HashMap::with_capacity(64);
+                let mut map = std::collections::HashMap::with_capacity(lock.len());
                 for plugin in plugins {
                     let mut total = 0;
                     for version in plugin.versions {

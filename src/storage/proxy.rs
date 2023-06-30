@@ -11,7 +11,9 @@ impl ProxiedStorage {
     pub fn new(target_store: String) -> Self {
         Self {
             store_url: target_store,
-            agent: ureq::Agent::new(),
+            agent: ureq::AgentBuilder::new()
+                .tls_connector(std::sync::Arc::new(native_tls::TlsConnector::new().expect("Native TLS init failed")))
+                .build(),
         }
     }
 
